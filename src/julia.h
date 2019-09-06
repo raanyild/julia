@@ -268,11 +268,11 @@ typedef struct _jl_code_info_t {
     size_t min_world;
     size_t max_world;
     // various boolean properties:
+    uint8_t hide_in_stacktrace;
     uint8_t inferred;
     uint8_t inlineable;
     uint8_t propagate_inbounds;
     uint8_t pure;
-    uint8_t hide_in_stacktrace;
 } jl_code_info_t;
 
 // This type describes a single method definition, and stores data
@@ -313,7 +313,6 @@ typedef struct _jl_method_t {
     int32_t nospecialize;  // bit flags: which arguments should not be specialized
     uint8_t isva;
     uint8_t pure;
-    uint8_t hide_in_stacktrace;
 
 // hidden fields:
     // lock for modifications to the method
@@ -1605,6 +1604,7 @@ JL_DLLEXPORT jl_value_t *jl_copy_ast(jl_value_t *expr JL_MAYBE_UNROOTED);
 
 JL_DLLEXPORT jl_array_t *jl_compress_ast(jl_method_t *m, jl_code_info_t *code);
 JL_DLLEXPORT jl_code_info_t *jl_uncompress_ast(jl_method_t *m, jl_code_instance_t *metadata, jl_array_t *data);
+JL_DLLEXPORT uint8_t jl_ast_flag_hide_in_stacktrace(jl_array_t *data) JL_NOTSAFEPOINT;
 JL_DLLEXPORT uint8_t jl_ast_flag_inferred(jl_array_t *data) JL_NOTSAFEPOINT;
 JL_DLLEXPORT uint8_t jl_ast_flag_inlineable(jl_array_t *data) JL_NOTSAFEPOINT;
 JL_DLLEXPORT uint8_t jl_ast_flag_pure(jl_array_t *data) JL_NOTSAFEPOINT;
