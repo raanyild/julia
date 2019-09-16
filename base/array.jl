@@ -237,8 +237,10 @@ segfault your program, in the same manner as C.
 function unsafe_copyto!(dest::Ptr{T}, src::Ptr{T}, n) where T
     # Do not use this to copy data between pointer arrays.
     # It can't be made safe no matter how carefully you checked.
+    al = datatype_alignment(T)
+    sz = (sizeof(T) + al - 1) & -al
     ccall(:memmove, Ptr{Cvoid}, (Ptr{Cvoid}, Ptr{Cvoid}, UInt),
-          dest, src, n*sizeof(T))
+          dest, src, n*sz)
     return dest
 end
 
@@ -1568,7 +1570,8 @@ function vcat(arrays::Vector{T}...) where T
         elsz = bitsunionsize(T)
         selptr = ccall(:jl_array_typetagdata, Ptr{UInt8}, (Any,), arr)
     elseif allocatedinline(T)
-        elsz = Core.sizeof(T)
+        al = datatype_alignment(T)
+        elsz = (Core.sizeof(T) + al - 1) & -al
     else
         elsz = Core.sizeof(Ptr{Cvoid})
     end
