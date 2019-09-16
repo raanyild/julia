@@ -652,18 +652,35 @@ STATIC_INLINE uintptr_t jl_bt_pack_extended_entry(int ngc, int nptr,
 }
 
 // Unpacking of extended backtrace entry data
-STATIC_INLINE size_t jl_bt_num_jlvals(jl_bt_element_t *bt_entry)      { assert(!jl_bt_is_native(bt_entry)); return  bt_entry[1].uintptr       & 0x7; } JL_NOTSAFEPOINT
-STATIC_INLINE size_t jl_bt_num_uintvals(jl_bt_element_t *bt_entry)    { assert(!jl_bt_is_native(bt_entry)); return (bt_entry[1].uintptr >> 3) & 0x7; } JL_NOTSAFEPOINT
-STATIC_INLINE int    jl_bt_entry_tag(jl_bt_element_t *bt_entry)       { assert(!jl_bt_is_native(bt_entry)); return (bt_entry[1].uintptr >> 6) & 0xf; } JL_NOTSAFEPOINT
-STATIC_INLINE uintptr_t jl_bt_entry_header(jl_bt_element_t *bt_entry) { assert(!jl_bt_is_native(bt_entry)); return  bt_entry[1].uintptr >> 10;       } JL_NOTSAFEPOINT
+STATIC_INLINE size_t jl_bt_num_jlvals(jl_bt_element_t *bt_entry) JL_NOTSAFEPOINT
+{
+    assert(!jl_bt_is_native(bt_entry));
+    return bt_entry[1].uintptr & 0x7;
+}
+STATIC_INLINE size_t jl_bt_num_uintvals(jl_bt_element_t *bt_entry) JL_NOTSAFEPOINT
+{
+    assert(!jl_bt_is_native(bt_entry));
+    return (bt_entry[1].uintptr >> 3) & 0x7;
+}
+STATIC_INLINE int jl_bt_entry_tag(jl_bt_element_t *bt_entry) JL_NOTSAFEPOINT
+{
+    assert(!jl_bt_is_native(bt_entry));
+    return (bt_entry[1].uintptr >> 6) & 0xf;
+}
+STATIC_INLINE uintptr_t jl_bt_entry_header(jl_bt_element_t *bt_entry) JL_NOTSAFEPOINT
+{
+    assert(!jl_bt_is_native(bt_entry));
+    return bt_entry[1].uintptr >> 10;
+}
+
 // Return `i`th GC-managed pointer for extended backtrace entry
+// The returned value is rooted for the lifetime of the parent exception stack.
 STATIC_INLINE jl_value_t *jl_bt_entry_jlvalue(jl_bt_element_t *bt_entry, size_t i) JL_NOTSAFEPOINT
 {
     return bt_entry[2 + i].jlvalue;
 }
 
 #define JL_BT_INTERP_FRAME_TAG    1  // An interpreter frame
-#define JL_BT_REPEATED_FRAMES_TAG 2  // Compressed representation of repeated frames
 
 // Number of bt elements in frame.
 STATIC_INLINE size_t jl_bt_entry_size(jl_bt_element_t *bt_entry) JL_NOTSAFEPOINT

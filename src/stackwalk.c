@@ -45,9 +45,9 @@ int jl_unw_stepn(bt_cursor_t *cursor, jl_bt_element_t *bt_data, size_t *bt_size,
     jl_ptls_t ptls = jl_get_ptls_states();
     volatile size_t n = 0;
     volatile int need_more_space = 0;
-    uintptr_t theip;
-    uintptr_t thesp;
-    uintptr_t thefp;
+    uintptr_t theip = 0;
+    uintptr_t thesp = 0;
+    uintptr_t thefp = 0;
 #if defined(_OS_WINDOWS_) && !defined(_CPU_X86_64_)
     assert(!jl_in_stackwalk);
     jl_in_stackwalk = 1;
@@ -161,8 +161,11 @@ JL_DLLEXPORT jl_value_t *jl_backtrace_from_here(int returnsp)
             jl_bt_element_t* bt_entry = bt_data + n;
             if (!jl_bt_is_native(bt_entry)) {
                 size_t njlvals = jl_bt_num_jlvals(bt_entry);
-                for (size_t j = 0; j < njlvals; j++)
-                    jl_array_ptr_1d_push(bt2, jl_bt_entry_jlvalue(bt_entry, j));
+                for (size_t j = 0; j < njlvals; j++) {
+                    jl_value_t *v = jl_bt_entry_jlvalue(bt_entry, j);
+                    JL_GC_PROMISE_ROOTED(v);
+                    jl_array_ptr_1d_push(bt2, v);
+                }
             }
             n += jl_bt_entry_size(bt_entry);
         }
@@ -192,8 +195,11 @@ void decode_backtrace(jl_bt_element_t *bt_data, size_t bt_size,
         if (jl_bt_is_native(bt_entry))
             continue;
         size_t njlvals = jl_bt_num_jlvals(bt_entry);
-        for (size_t j = 0; j < njlvals; j++)
-            jl_array_ptr_1d_push(bt2, jl_bt_entry_jlvalue(bt_entry, j));
+        for (size_t j = 0; j < njlvals; j++) {
+            jl_value_t *v = jl_bt_entry_jlvalue(bt_entry, j);
+            JL_GC_PROMISE_ROOTED(v);
+            jl_array_ptr_1d_push(bt2, v);
+        }
     }
     *btout = bt;
     *bt2out = bt2;
@@ -524,7 +530,7 @@ JL_DLLEXPORT jl_value_t *jl_lookup_code_address(void *ip, int skipC)
 }
 
 void jl_safe_print_codeloc(const char* func_name, const char* file_name,
-                           int line, int inlined)
+                           int line, int inlined) JL_NOTSAFEPOINT
 {
     const char *inlined_str = inlined ? " [inlined]" : "";
     if (line != -1) {
