@@ -470,7 +470,7 @@ int jl_unw_init_dwarf(bt_cursor_t *cursor, bt_context_t *uc)
 {
     return unw_init_local_dwarf(cursor, uc) != 0;
 }
-size_t rec_backtrace_ctx_dwarf(uintptr_t *bt_data, size_t maxsize,
+size_t rec_backtrace_ctx_dwarf(jl_bt_element_t *bt_data, size_t maxsize,
                                bt_context_t *context)
 {
     size_t bt_size = 0;
