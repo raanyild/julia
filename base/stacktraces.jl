@@ -56,6 +56,8 @@ struct StackFrame # this type should be kept platform-agnostic so that profiles 
     line::Int
     "the MethodInstance or CodeInfo containing the execution context (if it could be found)"
     linfo::Union{MethodInstance, CodeInfo, Nothing}
+    "Module of the code"
+    module_::Union{Module,Nothing}
     "true if the code is from C"
     from_c::Bool
     "true if the code is from an inlined frame"
@@ -65,7 +67,7 @@ struct StackFrame # this type should be kept platform-agnostic so that profiles 
 end
 
 StackFrame(func, file, line) = StackFrame(Symbol(func), Symbol(file), line,
-                                          nothing, false, false, 0)
+                                          nothing, nothing, false, false, 0)
 
 """
     StackTrace
@@ -76,7 +78,7 @@ An alias for `Vector{StackFrame}` provided for convenience; returned by calls to
 const StackTrace = Vector{StackFrame}
 
 const empty_sym = Symbol("")
-const UNKNOWN = StackFrame(empty_sym, empty_sym, -1, nothing, true, false, 0) # === lookup(C_NULL)
+const UNKNOWN = StackFrame(empty_sym, empty_sym, -1, nothing, nothing, true, false, 0) # === lookup(C_NULL)
 
 
 #=
@@ -107,7 +109,6 @@ function frame_importance(frame::StackFrame)
     if frame.from_c
         return -2
     end
-    mod = nothing
     if frame.linfo isa Core.MethodInstance
         def = frame.linfo.def
         if def isa Method
@@ -116,16 +117,10 @@ function frame_importance(frame::StackFrame)
                 # This overrides the module heuristic information
                 return -1
             end
-            mod = def.module
-        elseif def isa Module
-            # Top-level thunk ? (TODO: test this!)
-            mod = def
         end
-    elseif frame.linfo isa CodeInfo
-        # mod = frame.linfo  # TODO: Test this
     end
-    if mod !== nothing
-        modroot = Base.moduleroot(mod)
+    if frame.module_ !== nothing
+        modroot = Base.moduleroot(frame.module_)
         # TODO: Should Core be negative by default ?
         if modroot == Base || modroot == Core
             return 0
@@ -151,12 +146,18 @@ inlined at that point, innermost function first.
 """
 function lookup(pointer::Ptr{Cvoid})
     infos = ccall(:jl_lookup_code_address, Any, (Ptr{Cvoid}, Cint), pointer - 1, false)
-    isempty(infos) && return [StackFrame(empty_sym, empty_sym, -1, nothing, true, false, convert(UInt64, pointer))]
+    isempty(infos) && return [StackFrame(empty_sym, empty_sym, -1, nothing, nothing,
+                                         true, false, convert(UInt64, pointer))]
     res = Vector{StackFrame}(undef, length(infos))
     for i in 1:length(infos)
         info = infos[i]
         @assert(length(info) == 7)
-        res[i] = StackFrame(info[1], info[2], info[3], info[4], info[5], info[6], info[7])
+        module_ = nothing
+        if info[4] isa MethodInstance
+            def = info[4].def
+            module_ = def isa Module ? def : def.module
+        end
+        res[i] = StackFrame(info[1], info[2], info[3], info[4], module_, info[5], info[6], info[7])
     end
     return res
 end
@@ -173,28 +174,31 @@ function lookup(ip::Base.InterpreterIP)
         func = ip.code.def.name
         file = ip.code.def.file
         line = ip.code.def.line
+        module_ = ip.code.def.module
     elseif ip.code === nothing
         # interpreted top-level expression with no CodeInfo
-        return [StackFrame(top_level_scope_sym, empty_sym, 0, nothing, false, false, 0)]
+        return [StackFrame(top_level_scope_sym, empty_sym, 0, nothing, nothing, false, false, 0)]
     else
         @assert ip.code isa CodeInfo
         codeinfo = ip.code
+        module_ = ip.mod
         func = top_level_scope_sym
         file = empty_sym
         line = 0
     end
     i = max(ip.stmt+1, 1)  # ip.stmt is 0-indexed
     if i > length(codeinfo.codelocs) || codeinfo.codelocs[i] == 0
-        return [StackFrame(func, file, line, ip.code, false, false, 0)]
+        return [StackFrame(func, file, line, ip.code, module_, false, false, 0)]
     end
     lineinfo = codeinfo.linetable[codeinfo.codelocs[i]]
     scopes = StackFrame[]
     while true
-        push!(scopes, StackFrame(lineinfo.method, lineinfo.file, lineinfo.line, ip.code, false, false, 0))
+        push!(scopes, StackFrame(lineinfo.method, lineinfo.file, lineinfo.line, ip.code, module_, false, false, 0))
         if lineinfo.inlined_at == 0
             break
         end
         lineinfo = codeinfo.linetable[lineinfo.inlined_at]
+        module_ = nothing # Can we get this information from somewhere?
     end
     return scopes
 end
