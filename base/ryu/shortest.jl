@@ -1,6 +1,6 @@
 @inline function writeshortest(buf::Vector{UInt8}, pos, x::T,
     plus=false, space=false, hash=true,
-    precision=-1, expchar=UInt8('e'), padexp=false, decchar=UInt8('.'), typed=false) where {T}
+    precision=-1, expchar=UInt8('e'), padexp=false, decchar=UInt8('.'), typed=false, compact=false) where {T}
     @assert 0 < pos <= length(buf)
     neg = signbit(x)
     # special cases
@@ -240,6 +240,24 @@
     elseif space
         buf[pos] = UInt8(' ')
         pos += 1
+    end
+
+    if compact && output > 999999
+        lastdigit = output % 10
+        while output > 999999
+            output = div(output, 10)
+            nexp += nexp != 0
+            lastdigit = output % 10
+        end
+        if lastdigit == 9
+            while lastdigit == 9
+                output = div(output, 10)
+                nexp += nexp != 0
+                lastdigit = output % 10
+            end
+            output += 1
+        end
+        output += lastdigit > 4
     end
 
     olength = decimallength(output)

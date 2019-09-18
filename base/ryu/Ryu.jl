@@ -83,13 +83,11 @@ function writeexp(x::T, precision) where {T <: Base.IEEEFloat}
 end
 
 function Base.show(io::IO, x::T) where {T <: Base.IEEEFloat}
-    if get(io, :compact, false)
-        x = round(x, sigdigits=6)
-    end
+    compact = get(io, :compact, false)
     buf = Base.StringVector(neededdigits(T))
-    typed = !get(io, :compact, false) && get(io, :typeinfo, Any) != typeof(x)
+    typed = !compact && get(io, :typeinfo, Any) != typeof(x)
     pos = writeshortest(buf, 1, x, false, false, true, -1,
-        x isa Float32 ? UInt8('f') : UInt8('e'), false, UInt8('.'), typed)
+        x isa Float32 ? UInt8('f') : UInt8('e'), false, UInt8('.'), typed, compact)
     write(io, resize!(buf, pos - 1))
     return
 end
