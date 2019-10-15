@@ -1,6 +1,6 @@
 @inline function writeshortest(buf::Vector{UInt8}, pos, x::T,
     plus=false, space=false, hash=true,
-    precision=-1, expchar=UInt8('e'), padexp=false, decchar=UInt8('.'), typed=false) where {T}
+    precision=-1, expchar=UInt8('e'), padexp=false, decchar=UInt8('.'), typed=false, compact=false) where {T}
     @assert 0 < pos <= length(buf)
     neg = signbit(x)
     # special cases
@@ -75,15 +75,15 @@
         return pos + neg + 3 + (typed && x isa Union{Float32, Float16} ? 2 : 0)
     end
 
-    bits = uint(x)
-    mant = bits & (oftype(bits, 1) << mantissabits(T) - oftype(bits, 1))
-    exp = Int((bits >> mantissabits(T)) & ((Int64(1) << exponentbits(T)) - 1))
-    m2 = oftype(bits, Int64(1) << mantissabits(T)) | mant
-    e2 = exp - bias(T) - mantissabits(T)
+    bits = reinterpret(Unsigned, x)
+    mant = bits & (oftype(bits, 1) << significand_bits(T) - oftype(bits, 1))
+    exp = Int((bits >> significand_bits(T)) & ((Int64(1) << exponent_bits(T)) - 1))
+    m2 = oftype(bits, Int64(1) << significand_bits(T)) | mant
+    e2 = exp - exponent_bias(T) - significand_bits(T)
     fraction = m2 & ((oftype(bits, 1) << -e2) - 1)
     if e2 > 0 || e2 < -52 || fraction != 0
         if exp == 0
-            e2 = 1 - bias(T) - mantissabits(T) - 2
+            e2 = 1 - exponent_bias(T) - significand_bits(T) - 2
             m2 = mant
         else
             e2 -= 2
@@ -240,6 +240,36 @@
     elseif space
         buf[pos] = UInt8(' ')
         pos += 1
+    end
+
+    if compact && output > 999999
+        lastdigit = output % 10
+        while true
+            output = div(output, 10)
+            nexp += nexp != 0
+            output > 999999 || break
+            lastdigit = output % 10
+        end
+        if lastdigit == 9
+            output += 1
+            lastdigit = 0
+        end
+        if lastdigit == 9
+            while true
+                output = div(output, 10)
+                nexp += nexp != 0
+                output % 10 == 9 || break
+            end
+            output += 1
+        elseif output % 10 == 0
+            while true
+                output = div(output, 10)
+                nexp += nexp != 0
+                output % 10 == 0 || break
+            end
+        else
+            output += lastdigit > 4
+        end
     end
 
     olength = decimallength(output)

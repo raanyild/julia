@@ -52,7 +52,7 @@ first component is always the empty string.
 splitdrive(path::AbstractString)
 
 """
-    homedir() -> AbstractString
+    homedir() -> String
 
 Return the current user's home directory.
 
@@ -79,9 +79,9 @@ end
 
 
 if Sys.iswindows()
-    isabspath(path::String) = occursin(path_absolute_re, path)
+    isabspath(path::AbstractString) = occursin(path_absolute_re, path)
 else
-    isabspath(path::String) = startswith(path, '/')
+    isabspath(path::AbstractString) = startswith(path, '/')
 end
 
 """
@@ -356,7 +356,7 @@ end # os-test
 
 
 """
-    realpath(path::AbstractString) -> AbstractString
+    realpath(path::AbstractString) -> String
 
 Canonicalize a path by expanding symbolic links and removing "." and ".." entries.
 On case-insensitive case-preserving filesystems (typically Mac and Windows), the
@@ -463,6 +463,6 @@ end
 relpath(path::AbstractString, startpath::AbstractString) =
     relpath(String(path), String(startpath))
 
-for f in (:isabspath, :isdirpath, :splitdir, :splitdrive, :splitext, :normpath, :abspath)
+for f in (:isdirpath, :splitdir, :splitdrive, :splitext, :normpath, :abspath)
     @eval $f(path::AbstractString) = $f(String(path))
 end

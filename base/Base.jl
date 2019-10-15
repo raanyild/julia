@@ -116,6 +116,7 @@ include("namedtuple.jl")
 include("hashing.jl")
 include("rounding.jl")
 using .Rounding
+include("div.jl")
 include("float.jl")
 include("twiceprecision.jl")
 include("complex.jl")
@@ -307,10 +308,6 @@ include("hashing2.jl")
 include("irrationals.jl")
 include("mathconstants.jl")
 using .MathConstants: ℯ, π, pi
-
-# (s)printf macros
-include("printf.jl")
-# import .Printf
 
 # metaprogramming
 include("meta.jl")

@@ -170,6 +170,11 @@ JL_PRIVATE_LIBS-$(USE_SYSTEM_LIBSSH2) += libssh2
 JL_PRIVATE_LIBS-$(USE_SYSTEM_MBEDTLS) += libmbedtls libmbedcrypto libmbedx509
 JL_PRIVATE_LIBS-$(USE_SYSTEM_CURL) += libcurl
 JL_PRIVATE_LIBS-$(USE_SYSTEM_LIBGIT2) += libgit2
+ifeq ($(OS),WINNT)
+JL_PRIVATE_LIBS-$(USE_SYSTEM_ZLIB) += zlib
+else
+JL_PRIVATE_LIBS-$(USE_SYSTEM_ZLIB) += libz
+endif
 ifeq ($(USE_LLVM_SHLIB),1)
 JL_PRIVATE_LIBS-$(USE_SYSTEM_LLVM) += libLLVM libLLVM-6
 endif
@@ -275,7 +280,7 @@ ifeq ($(BUNDLE_DEBUG_LIBS),1)
 else
 	@$(MAKE) $(QUIET_MAKE) release
 endif
-	@for subdir in $(bindir) $(datarootdir)/julia/stdlib/$(VERSDIR) $(docdir) $(man1dir) $(includedir)/julia $(libdir) $(private_libdir) $(sysconfdir); do \
+	@for subdir in $(bindir) $(datarootdir)/julia/stdlib/$(VERSDIR) $(docdir) $(man1dir) $(includedir)/julia $(libdir) $(private_libdir) $(sysconfdir) $(libexecdir); do \
 		mkdir -p $(DESTDIR)$$subdir; \
 	done
 
@@ -322,6 +327,7 @@ ifeq ($(BUNDLE_DEBUG_LIBS),1)
 	@$(DSYMUTIL) -o $(DESTDIR)$(prefix)/$(framework_resources)/sys-debug.dylib.dSYM $(build_private_libdir)/sys-debug.dylib
 endif
 endif
+
 	for suffix in $(JL_PRIVATE_LIBS-0) ; do \
 		for lib in $(build_libdir)/$${suffix}.*$(SHLIB_EXT)*; do \
 			if [ "$${lib##*.}" != "dSYM" ]; then \
@@ -334,6 +340,8 @@ endif
 		$(INSTALL_M) $$lib $(DESTDIR)$(private_libdir) ; \
 	done
 endif
+	# Install `7z` into libexec/
+	$(INSTALL_M) $(build_bindir)/7z$(EXE) $(DESTDIR)$(libexecdir)/
 
 	# Copy public headers
 	cp -R -L $(build_includedir)/julia/* $(DESTDIR)$(includedir)/julia
@@ -421,7 +429,7 @@ ifeq ($(DARWIN_FRAMEWORK),1)
 endif
 
 distclean:
-	-rm -fr $(BUILDROOT)/julia-*.tar.gz $(BUILDROOT)/julia*.exe $(BUILDROOT)/julia-*.7z $(BUILDROOT)/julia-$(JULIA_COMMIT)
+	-rm -fr $(BUILDROOT)/julia-*.tar.gz $(BUILDROOT)/julia*.exe $(BUILDROOT)/julia-$(JULIA_COMMIT)
 
 binary-dist: distclean
 ifeq ($(USE_SYSTEM_BLAS),0)
@@ -454,22 +462,11 @@ ifeq ($(OS), Darwin)
 endif
 
 ifeq ($(OS), WINNT)
-	[ ! -d $(JULIAHOME)/dist-extras ] || ( cd $(JULIAHOME)/dist-extras && \
-		cp 7z.exe 7z.dll libexpat-1.dll zlib1.dll $(BUILDROOT)/julia-$(JULIA_COMMIT)/bin )
 	cd $(BUILDROOT)/julia-$(JULIA_COMMIT)/bin && rm -f llvm* llc.exe lli.exe opt.exe LTO.dll bugpoint.exe macho-dump.exe
 
-	# create file listing for uninstall. note: must have Windows path separators and line endings.
-	cd $(BUILDROOT)/julia-$(JULIA_COMMIT) && find * | sed -e 's/\//\\/g' -e 's/$$/\r/g' > etc/uninstall.log
-
-	# build nsis package
-	cd $(BUILDROOT) && $(call spawn,$(JULIAHOME)/dist-extras/nsis/makensis.exe) -NOCD -DVersion=$(JULIA_VERSION) -DArch=$(ARCH) -DCommit=$(JULIA_COMMIT) -DJULIAHOME="$(call cygpath_w,$(JULIAHOME))" $(call cygpath_w,$(JULIAHOME)/contrib/windows/build-installer.nsi) | iconv -f latin1
-
-	# compress nsis installer and combine with 7zip self-extracting header
-	cd $(BUILDROOT) && $(JULIAHOME)/dist-extras/7z a -mx=9 "julia-install-$(JULIA_COMMIT)-$(ARCH).7z" julia-installer.exe
-	cd $(BUILDROOT) && cat $(JULIAHOME)/contrib/windows/7zS.sfx $(JULIAHOME)/contrib/windows/7zSFX-config.txt "julia-install-$(JULIA_COMMIT)-$(ARCH).7z" > "$(JULIA_BINARYDIST_FILENAME).exe"
+	# run Inno Setup to compile installer; /O flag specifies where to place installer and /F flag the installer name
+	$(call spawn,$(JULIAHOME)/dist-extras/inno/iscc.exe /DAppVersion=$(JULIA_VERSION) /DAppSourceFiles="$(call cygpath_w,$(BUILDROOT)/julia-$(JULIA_COMMIT))" /DAppHomeFiles="$(call cygpath_w,$(JULIAHOME))" /F"$(JULIA_BINARYDIST_FILENAME)" /O"$(call cygpath_w,$(BUILDROOT))"  $(call cygpath_w,$(JULIAHOME)/contrib/windows/build-installer.iss))
 	chmod a+x "$(BUILDROOT)/$(JULIA_BINARYDIST_FILENAME).exe"
-	-rm -f $(BUILDROOT)/julia-install-$(JULIA_COMMIT)-$(ARCH).7z
-	-rm -f $(BUILDROOT)/julia-installer.exe
 else
 	cd $(BUILDROOT) && $(TAR) zcvf $(JULIA_BINARYDIST_FILENAME).tar.gz julia-$(JULIA_COMMIT)
 endif
@@ -585,38 +582,12 @@ test-%: check-whitespace $(JULIA_BUILD_MODE)
 # download target for some hardcoded windows dependencies
 .PHONY: win-extras wine_path
 win-extras:
-	[ -d $(JULIAHOME)/dist-extras ] || mkdir $(JULIAHOME)/dist-extras
-ifneq ($(BUILD_OS),WINNT)
-ifeq (,$(findstring CYGWIN,$(BUILD_OS)))
-	cp /usr/lib/p7zip/7z /usr/lib/p7zip/7z.so $(JULIAHOME)/dist-extras
-endif
-endif
-ifneq (,$(filter $(ARCH), i386 i486 i586 i686))
+	@$(MAKE) -C $(BUILDROOT)/deps install-p7zip
+	mkdir -p $(JULIAHOME)/dist-extras
 	cd $(JULIAHOME)/dist-extras && \
-	$(JLDOWNLOAD) https://sourceforge.net/projects/sevenzip/files/7-Zip/19.00/7z1900.exe && \
-	$(JLCHECKSUM) 7z1900.exe && \
-	7z x -y 7z1900.exe 7z.exe 7z.dll && \
-	../contrib/windows/winrpm.sh http://download.opensuse.org/repositories/windows:/mingw:/win32/openSUSE_Leap_42.2 \
-		"mingw32-libexpat1 mingw32-zlib1" && \
-	cp usr/i686-w64-mingw32/sys-root/mingw/bin/*.dll .
-else ifeq ($(ARCH),x86_64)
-	cd $(JULIAHOME)/dist-extras && \
-	$(JLDOWNLOAD) https://downloads.sourceforge.net/project/sevenzip/7-Zip/19.00/7z1900-x64.exe && \
-	$(JLCHECKSUM) 7z1900-x64.exe && \
-	7z x -y 7z1900-x64.exe 7z.exe 7z.dll && \
-	../contrib/windows/winrpm.sh http://download.opensuse.org/repositories/windows:/mingw:/win64/openSUSE_Leap_42.2 \
-		"mingw64-libexpat1 mingw64-zlib1" && \
-	cp usr/x86_64-w64-mingw32/sys-root/mingw/bin/*.dll .
-else
-	$(error no win-extras target for ARCH=$(ARCH))
-endif
-	cd $(JULIAHOME)/dist-extras && \
-	$(JLDOWNLOAD) https://sourceforge.net/projects/nsis/files/NSIS%203/3.04/nsis-3.04-setup.exe && \
-	$(JLCHECKSUM) nsis-3.04-setup.exe && \
-	chmod a+x 7z.exe && \
-	chmod a+x 7z.dll && \
-	$(call spawn,./7z.exe) x -y -onsis nsis-3.04-setup.exe && \
-	chmod a+x ./nsis/makensis.exe
+	$(JLDOWNLOAD) http://www.jrsoftware.org/download.php/is.exe && \
+	chmod a+x is.exe && \
+	$(call spawn, $(JULIAHOME)/dist-extras/is.exe /DIR="$(call cygpath_w,$(JULIAHOME)/dist-extras/inno)" /PORTABLE=1 /CURRENTUSER /VERYSILENT)
 
 # various statistics about the build that may interest the user
 ifeq ($(USE_SYSTEM_LLVM), 1)

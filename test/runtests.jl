@@ -2,8 +2,9 @@
 
 using Test
 using Distributed
+using Dates
 import REPL
-using Base.Printf: @sprintf
+using Printf: @sprintf
 
 include("choosetests.jl")
 include("testenv.jl")
@@ -103,6 +104,17 @@ cd(@__DIR__) do
             printstyled(lpad(alloc_str, alloc_align, " "), " | ", color=:white)
             rss_str = @sprintf("%5.2f", resp[6] / 2^20)
             printstyled(lpad(rss_str, rss_align, " "), "\n", color=:white)
+        finally
+            unlock(print_lock)
+        end
+    end
+
+    global print_testworker_started = (name, wrkr)->begin
+    lock(print_lock)
+        try
+            printstyled(name, color=:white)
+            printstyled(lpad("($wrkr)", name_align - length(name) + 1, " "), " |",
+                " "^elapsed_align, "started at $(now())\n", color=:white)
         finally
             unlock(print_lock)
         end

@@ -67,8 +67,9 @@ function copy(c::CodeInfo)
     cnew.slotflags = copy(cnew.slotflags)
     cnew.codelocs  = copy(cnew.codelocs)
     cnew.linetable = copy(cnew.linetable)
-    cnew.ssaflags = copy(cnew.ssaflags)
-    ssavaluetypes = cnew.ssavaluetypes
+    cnew.ssaflags  = copy(cnew.ssaflags)
+    cnew.edges     = cnew.edges === nothing ? nothing : copy(cnew.edges)
+    ssavaluetypes  = cnew.ssavaluetypes
     ssavaluetypes isa Vector{Any} && (cnew.ssavaluetypes = copy(ssavaluetypes))
     return cnew
 end
@@ -242,10 +243,8 @@ macro propagate_inbounds(ex)
     if isa(ex, Expr)
         pushmeta!(ex, :inline)
         pushmeta!(ex, :propagate_inbounds)
-        esc(ex)
-    else
-        esc(ex)
     end
+    esc(ex)
 end
 
 """

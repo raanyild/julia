@@ -24,7 +24,7 @@ function show(io::IO, ::MIME"text/plain", f::Function)
     ft = typeof(f)
     mt = ft.name.mt
     if isa(f, Core.IntrinsicFunction)
-        show(io, f)
+        print(io, f)
         id = Core.Intrinsics.bitcast(Int32, f)
         print(io, " (intrinsic function #$id)")
     elseif isa(f, Core.Builtin)
@@ -403,10 +403,14 @@ end
 show(io::IO, f::Function) = show_function(io, f, get(io, :compact, false))
 print(io::IO, f::Function) = show_function(io, f, true)
 
-function show(io::IO, x::Core.IntrinsicFunction)
-    name = ccall(:jl_intrinsic_name, Cstring, (Core.IntrinsicFunction,), x)
-    print(io, unsafe_string(name))
+function show(io::IO, f::Core.IntrinsicFunction)
+    if !get(io, :compact, false)
+        print(io, "Core.Intrinsics.")
+    end
+    print(io, nameof(f))
 end
+
+print(io::IO, f::Core.IntrinsicFunction) = print(io, nameof(f))
 
 show(io::IO, ::Core.TypeofBottom) = print(io, "Union{}")
 show(io::IO, ::MIME"text/plain", ::Core.TypeofBottom) = print(io, "Union{}")
@@ -519,7 +523,7 @@ end
 function show_datatype(io::IO, x::DataType)
     istuple = x.name === Tuple.name
     if (!isempty(x.parameters) || istuple) && x !== Tuple
-        n = length(x.parameters)
+        n = length(x.parameters)::Int
 
         # Print homogeneous tuples with more than 3 elements compactly as NTuple{N, T}
         if istuple && n > 3 && all(i -> (x.parameters[1] === i), x.parameters)
@@ -1497,11 +1501,21 @@ function show_unquoted(io::IO, ex::Expr, indent::Int, prec::Int)
     nothing
 end
 
-function show_tuple_as_call(io::IO, name::Symbol, sig::Type)
+demangle_function_name(name::Symbol) = Symbol(demangle_function_name(string(name)))
+function demangle_function_name(name::AbstractString)
+    demangle = split(name, '#')
+    # kw sorters and impl methods use the name scheme `f#...`
+    if length(demangle) >= 2 && demangle[1] != ""
+        return demangle[1]
+    end
+    return name
+end
+
+function show_tuple_as_call(io::IO, name::Symbol, sig::Type, demangle=false, kwargs=nothing)
     # print a method signature tuple for a lambda definition
     color = get(io, :color, false) && get(io, :backtrace, false) ? stackframe_function_color() : :nothing
     if sig === Tuple
-        printstyled(io, name, "(...)", color=color)
+        printstyled(io, demangle ? demangle_function_name(name) : name, "(...)", color=color)
         return
     end
     tv = Any[]
@@ -1518,7 +1532,7 @@ function show_tuple_as_call(io::IO, name::Symbol, sig::Type)
         if ft <: Function && isa(uw,DataType) && isempty(uw.parameters) &&
                 isdefined(uw.name.module, uw.name.mt.name) &&
                 ft == typeof(getfield(uw.name.module, uw.name.mt.name))
-            print(io, uw.name.mt.name)
+            print(io, (demangle ? demangle_function_name : identity)(uw.name.mt.name))
         elseif isa(ft, DataType) && ft.name === Type.body.name && !Core.Compiler.has_free_typevars(ft)
             f = ft.parameters[1]
             print(io, f)
@@ -1533,6 +1547,16 @@ function show_tuple_as_call(io::IO, name::Symbol, sig::Type)
         first || print(io, ", ")
         first = false
         print(env_io, "::", sig[i])
+    end
+    if kwargs !== nothing
+        print(io, "; ")
+        first = true
+        for (k, t) in kwargs
+            first || print(io, ", ")
+            first = false
+            print(io, k, "::")
+            show(io, t)
+        end
     end
     printstyled(io, ")", color=print_style)
     show_method_params(io, tv)
